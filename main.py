@@ -87,10 +87,27 @@ class JVMConstant:
             return self.bytes
         return f"-- UNKNOWN {self.tag} --"
 
-
-class JVMCodeAttr:
+class JVMAttribute:
     def __init__(self, klass) -> None:
         klassFile = klass.klassFile
+        
+        self.attribute_length = klassFile.U4()
+
+    def _dummy(self, klass):
+        self.info = klass.klassFile.U(self.attribute_length)
+
+    def __repr__(self) -> str:
+        return str(self.attribute_name)
+
+    def __str__(self) -> str:
+        return str(self.attribute_name)
+
+class JVMCodeAttr(JVMAttribute):
+    def __init__(self, klass) -> None:
+        super().__init__(klass)
+
+        klassFile = klass.klassFile
+
         self.max_stack = klassFile.U2()
         self.max_locals = klassFile.U2()
         self.code_length = klassFile.U4()
@@ -104,27 +121,22 @@ class JVMCodeAttr:
                                  'catch_type': klassFile.U2()} for _ in range(self.exception_table_length)]
 
         self.attributes_count = klassFile.U2()
-        self.attributes = [JVMAttribute(klass) for _ in range(self.attributes_count)]
+        self.attributes = [parsAttribute(klass) for _ in range(self.attributes_count)]
 
 
-class JVMAttribute:
-    def __init__(self, klass) -> None:
-        klassFile = klass.klassFile
-        self.attribute_name_index = klassFile.U2()
+def parsAttribute(klass) -> JVMAttribute:
+    klassFile = klass.klassFile
 
-        self.attribute_name = klass.constant_pool[self.attribute_name_index-1]
-        self.attribute_length = klassFile.U4()
+    attribute_name_index = klassFile.U2()
+    attribute_name = klass.constant_pool[attribute_name_index-1]
 
-        if str(self.attribute_name) == "Code":
-            self.info = JVMCodeAttr(klass)
-        else:
-            self.info = klassFile.U(self.attribute_length)
-
-    def __repr__(self) -> str:
-        return str(self.attribute_name)
-
-    def __str__(self) -> str:
-        return str(self.attribute_name)
+    match str(attribute_name):
+        case 'Code':
+            return JVMCodeAttr(klass)
+        case _:
+            attr = JVMAttribute(klass)
+            attr._dummy(klass)
+            return attr
 
 
 class JVMMethod:
@@ -134,7 +146,7 @@ class JVMMethod:
         self.name_index = klassFile.U2()
         self.descriptor_index = klassFile.U2()
         self.attributes_count = klassFile.U2()
-        self.attributes = [JVMAttribute(klass) for _ in range(self.attributes_count)]
+        self.attributes = [parsAttribute(klass) for _ in range(self.attributes_count)]
 
 class JVMField:
     def __init__(self, klass) -> None:
@@ -143,7 +155,7 @@ class JVMField:
         self.name_index = klassFile.U2()
         self.descriptor_index = klassFile.U2()
         self.attributes_count = klassFile.U2()
-        self.attributes = [JVMAttribute(klass) for _ in range(self.attributes_count)]
+        self.attributes = [parsAttribute(klass) for _ in range(self.attributes_count)]
 
 
 class JVMClass:
@@ -172,7 +184,7 @@ class JVMClass:
             self.methods = [JVMMethod(self) for _ in range(self.methods_count)]
 
             self.attributes_count = self.klassFile.U2()
-            self.attributes = [JVMAttribute(self) for _ in range(self.attributes_count)]
+            self.attributes = [parsAttribute(self) for _ in range(self.attributes_count)]
 
     def validate_class_file_magic(self):
         magic = self.klassFile.U4()
